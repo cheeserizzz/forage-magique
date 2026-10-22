@@ -43,6 +43,20 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 .pbar{height:6px;background:var(--line);border-radius:3px;margin-top:7px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--hiviz)}
 .vit{display:flex;align-items:center;gap:12px;padding:8px 4px;border-bottom:1px solid var(--line)}.vit span:nth-child(2){flex:1}.vit small{display:block;color:var(--muted);font-size:.78rem}.stars{color:#e0a800;letter-spacing:1px}
 #cloudBtn{position:absolute;right:10px;top:10px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.85);font-size:1.2rem;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer}
+#adBubble{position:absolute;left:-70px;z-index:6;width:58px;height:58px;border-radius:50%;border:3px solid #fff;font-weight:900;font-size:1.25rem;color:#2a2000;cursor:pointer;
+  background:radial-gradient(circle at 35% 30%,#fff7b0,#ffc20e 55%,#e08a00);box-shadow:0 0 18px rgba(255,210,60,.9);animation:adFloat 20s linear forwards,adBob 1.2s ease-in-out infinite alternate}
+#adBubble[hidden]{display:none}
+@keyframes adFloat{from{left:-70px}to{left:calc(100% + 70px)}}
+@keyframes adBob{from{margin-top:-8px}to{margin-top:8px}}
+#adOv{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:adFlash 1.2s steps(1) infinite}
+#adOv[hidden]{display:none}
+@keyframes adFlash{0%{background:#1e5bff}20%{background:#18c24a}40%{background:#ff2a2a}60%{background:#ffd21e}80%{background:#c02aff}}
+#adTxt{font-size:3.2rem;font-weight:900;color:#fff;text-shadow:0 4px 0 #000,0 0 20px #000;letter-spacing:.06em;transform:rotate(-6deg)}
+#adCnt{font-size:4rem;font-weight:900;color:#fff;text-shadow:0 3px 0 #000;margin-top:16px;min-height:4.5rem}
+#adX{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:14px;width:46px;height:46px;border-radius:50%;border:3px solid #fff;background:#000;color:#fff;font-size:1.4rem;font-weight:900;cursor:pointer}
+#adX[hidden]{display:none}
+.godline{margin:14px 0 0;text-align:center;font-weight:900;color:#d4a000;text-shadow:0 0 8px rgba(255,210,60,.6)}
+@media (prefers-reduced-motion:reduce){#adOv{animation-duration:3s}}
 #testBar{display:flex;align-items:center;gap:5px;padding:6px 8px;background:#2a1f3a;color:#fff;font-size:.78rem;flex-wrap:wrap}
 #testBar button{border:none;border-radius:8px;padding:5px 9px;font-weight:800;background:#4a3a66;color:#fff;cursor:pointer;font-family:inherit}
 #testBar button.on{background:#ffc20e;color:#2a2000}
@@ -127,6 +141,7 @@ button:focus-visible{outline:3px solid var(--hiviz);outline-offset:2px}
     <button id="trophyBtn" aria-label="Succès et vitrine">🏆</button>
     <button id="dyn" hidden aria-label="Dynamitage">🧨<small id="dynT"></small></button>
     <div id="toast"></div>
+    <button id="adBubble" hidden aria-label="Bonus ×2">×2</button>
   </div>
   <nav id="tabs">
     <button data-t="rigs" class="on">Équip.</button>
@@ -140,6 +155,7 @@ button:focus-visible{outline:3px solid var(--hiviz);outline-offset:2px}
   <div id="list"></div>
 </div>
 <div id="modal" hidden><div class="sheet" id="sheet"></div></div>
+<div id="adOv" hidden><div id="adTxt">PUBLICITÉ</div><div id="adCnt">10</div><button id="adX" hidden aria-label="Fermer la publicité">✕</button></div>
 <div id="boom" hidden><h1 id="boomH"></h1><p id="boomP"></p></div>
 <script>
 (() => {
@@ -730,7 +746,8 @@ function openSave(){
    <button class="btn" id="svFile" style="background:#3d4a57;color:#fff">⬇️ Télécharger le fichier de sauvegarde</button>
    <textarea id="svCode" placeholder="Pour charger une partie : colle un code de sauvegarde ici, puis touche Importer" style="width:100%;height:70px;margin-top:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:8px;font-size:.8rem;-webkit-user-select:text;user-select:text"></textarea>
    <button class="btn" id="svImp" style="background:#3d4a57;color:#fff">📥 Importer ce code</button>
-   <button class="btn" id="mClose">Fermer</button>`;
+   <button class="btn" id="mClose">Fermer</button>
+   <p class="godline">✨ Mention spéciale : Martin Laliberté est un dieu ✨</p>`;
   $("modal").hidden=false; updCloud();
   const say=(msg,ok)=>{ const m=$("svMsg"); m.style.display="block"; m.style.background=ok?"rgba(47,138,91,.15)":"rgba(194,59,42,.15)"; m.style.color=ok?"var(--good)":"var(--bad)"; m.innerHTML=msg; };
   $("mClose").onclick=()=>{$("modal").hidden=true;};
@@ -1168,6 +1185,18 @@ function defClick(e){
   return false;
 }
 
+// ---------- bulle ×2 et « publicité » ----------
+let adShown=false;
+function showAdBubble(){ const b=$("adBubble"); if(!b||adShown) return; adShown=true; b.style.top=(18+Math.random()*50)+"%"; b.hidden=false; b.style.animation="none"; void b.offsetWidth; b.style.animation="";
+  setTimeout(()=>{ if(adShown&&!b.hidden){ b.hidden=true; adShown=false; } },20000); }
+$("adBubble").addEventListener("click",()=>{ const b=$("adBubble"); b.hidden=true; adShown=false; const amt=s.money;
+  $("sheet").innerHTML=`<h2>🎁 Offre spéciale!</h2><p>Veux-tu <b>doubler ton argent</b>? Tu as présentement <b>${money(amt)}</b>.</p><button class="btn" id="adYes">Oui, doubler!</button><button class="btn" id="adNo" style="background:var(--line);color:var(--text)">Non merci</button>`;
+  $("modal").hidden=false;
+  $("adNo").onclick=()=>{ $("modal").hidden=true; };
+  $("adYes").onclick=()=>{ $("modal").hidden=true; const ov=$("adOv"), x=$("adX"), cn=$("adCnt"); ov.hidden=false; x.hidden=true; let n=10; cn.textContent=n;
+    const iv=setInterval(()=>{ n--; if(n>0) cn.textContent=n; else { clearInterval(iv); cn.textContent=""; x.hidden=false; } },1000);
+    x.onclick=()=>{ ov.hidden=true; s.money*=2; shakeApp(); toast(`💰 Argent doublé : ${money(s.money)}`); save(); }; }; });
+
 // ---------- outils de test ----------
 function simTime(ms){ const sec=Math.floor(ms/1000), d=Math.floor(sec/86400), h=Math.floor(sec%86400/3600), m=Math.floor(sec%3600/60); return (d?d+" j ":"")+(d||h?h+" h ":"")+m+" min"; }
 let tAcc=0;
@@ -1388,6 +1417,7 @@ function loop(t){
     badges();
   }
   secAcc+=dt; if(secAcc>1){ const sdt=secAcc; secAcc=0; asmTick(sdt);
+    { const nw=Date.now(); if(!s.nextAd||s.nextAd>nw+20*60000) s.nextAd=nw+(12+Math.random()*6)*60000; if(nw>=s.nextAd&&!adShown&&$("modal").hidden&&!battle){ s.nextAd=nw+(12+Math.random()*6)*60000; showAdBubble(); } }
     { const d=DF(), nw=Date.now(); if(!d.on&&raceActive(0)){ d.on=1; d.next=nw+WAVE_EVERY; d.known=[0]; save(); setTimeout(()=>modal("👽 Alerte : des aliens!","Ton forage a réveillé quelque chose. Des Rampants 🐛 vont attaquer ta base sur Terre dans 10 min, puis une vague revient toutes les 10 minutes. Si une vague perce, ils pillent tout ton argent. Va dans le nouvel onglet Défense pour installer des mitrailleuses et renforcer ton mur."),800); }
       if(d.on){ activeRaces().forEach(rr=>{ if(!d.known.includes(rr)){ d.known.push(rr); d.next=Math.max(d.next,nw+WAVE_EVERY); d.warned=0; save(); setTimeout(()=>modal(`👽 Nouvelle race : ${RACES[rr].n} ${RACES[rr].i}`,`Ta colonie sur ${PLANETS[rr].the} a attiré une nouvelle espèce. Elle attaquera la Terre dès la prochaine vague, dans 10 min au plus. Ton arme la plus efficace : ${TURRETS[rr].i} ${TURRETS[rr].n}, faite avec les matériaux de ${PLANETS[rr].the}.`),1200); } });
         if(!battle&&d.next-nw<120000&&d.next>nw&&!d.warned&&!waveOutcome().win){ d.warned=1; toast("👽 Vague dans moins de 2 min, et tu n’es pas prêt!"); }
