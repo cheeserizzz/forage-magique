@@ -466,7 +466,7 @@ const TURRETS=[
  {n:"Tourelle d’obsidienne",i:"🗻",need:{obsi:15},money:1e14},
  {n:"Laser stellaire",i:"🔆",need:{psyche:10,platast:10},money:1e15}
 ];
-const WAVE_EVERY=6*3600000, WAVE_GROW=1.35, TUR_BASE=25, TUR_UP=1.15, CROSS=.2, WALL_MAX=10;
+const WAVE_EVERY=10*60000, WAVE_GROW=1.04, TUR_BASE=25, TUR_UP=1.15, CROSS=.2, WALL_MAX=10;
 function freshDef(){ return {on:0,next:0,wave:0,k:{},tur:{},wall:0,buff:0,debuff:0,log:[]}; }
 const DF=()=>s.p.def;
 const raceActive=r=>r===0?(s.claims>0||s.coresTotal>0||DF().on):!!founded(RACES[r].col2);
@@ -479,13 +479,13 @@ const turUpMul=t=>5*Math.pow(1.5,turLv(t));
 const wallAbs=()=>.04*DF().wall;
 const wallCost=()=>1e6*Math.pow(10,DF().wall);
 const defVs=r=>TURRETS.reduce((a,T,t)=>a+turPow(t)*(t===r?1:CROSS),0);
-const defMult=()=>{ const n=Date.now(), d=DF(); return (n<d.buff?2:1)*(n<d.debuff?.5:1); };
+const defMult=()=>{ const n=Date.now(), d=DF(); return n<d.buff?2:1; };
 function canPayTur(t,mul){ const T=TURRETS[t]; return s.money>=T.money*mul&&Object.entries(T.need).every(([k,q])=>(s.p.ingots[k]||0)>=Math.ceil(q*mul)); }
 function payTur(t,mul){ const T=TURRETS[t]; s.money-=T.money*mul; for(const [k,q] of Object.entries(T.need)) s.p.ingots[k]-=Math.ceil(q*mul); }
 function waveOutcome(){ const rs=activeRaces(); const det=rs.map(r=>{ const need=raceStr(r)*(1-wallAbs()), have=defVs(r); return {r,need,have,ok:have>=need,ratio:Math.min(1,have/Math.max(1,need))}; }); return {det,win:det.every(x=>x.ok)}; }
 function resolveWave(){ const d=DF(), o=waveOutcome(), now=Date.now(); d.wave++; o.det.forEach(x=>{ d.k[x.r]=(d.k[x.r]||0)+1; });
-  let msg; if(o.win){ const c=2*d.wave; s.cores+=c; s.coresTotal+=c; d.buff=now+2*3600000; msg=`Victoire! Production ×2 pendant 2 h et +${c} 🧪.`; }
-  else { const lost=s.money*.25; s.money-=lost; d.debuff=now+2*3600000; msg=`Défaite… Production ×0,5 pendant 2 h et ${num(lost)} $ perdus.`; }
+  let msg; if(o.win){ const c=1+Math.floor(d.wave/10); s.cores+=c; s.coresTotal+=c; d.buff=now+WAVE_EVERY; msg=`Victoire! Production ×2 jusqu’à la prochaine vague et +${c} 🧪.`; }
+  else { const lost=s.money; s.money=0; msg=`Défaite… Les aliens ont pillé tout ton argent (${money(lost)}). Tu gardes tout le reste : équipement, améliorations, bâtiments et production.`; }
   d.log.unshift({w:d.wave,win:o.win,t:now}); d.log=d.log.slice(0,8); d.next=now+WAVE_EVERY; return {o,msg}; }
 
 const FOND_COST=250000, FURN_COST=[0,0,1e8,1e11,1e14], BLOW_COST=l=>1e7*Math.pow(25,l), BLOW_MAX=10, HAM_COST=l=>1e6*Math.pow(12,l), HAM_MAX=10;
@@ -667,7 +667,7 @@ function save(){ s.lastTs=Date.now(); try{ localStorage.setItem(KEY,JSON.stringi
 function normalize(o){
   if(!o || !Array.isArray(o.rigs)) return null;
   const n=Object.assign(fresh(),o);
-  n.up=Object.assign(fresh().up,o.up||{}); n.b=Object.assign(fresh().b,o.b||{}); n.perks=o.perks||{}; n.p=Object.assign(freshP(),o.p||{}); if(!n.p.furn.length) n.p.furn=[null]; n.g=Object.assign({planet:0,done:[],cent:{},era:0,dk:{}},o.g||{}); n.g.dk=n.g.dk||{}; if(!o.claimStart) n.claimStart=Date.now(); n.p.arts=n.p.arts||{}; n.p.auto=n.p.auto||{}; n.p.sp=Object.assign(freshSP(),n.p.sp||{}); n.p.tech=n.p.tech||{}; n.p.sci=n.p.sci||{}; n.p.def=Object.assign(freshDef(),n.p.def||{}); n.p.def.known=n.p.def.known||[];
+  n.up=Object.assign(fresh().up,o.up||{}); n.b=Object.assign(fresh().b,o.b||{}); n.perks=o.perks||{}; n.p=Object.assign(freshP(),o.p||{}); if(!n.p.furn.length) n.p.furn=[null]; n.g=Object.assign({planet:0,done:[],cent:{},era:0,dk:{}},o.g||{}); n.g.dk=n.g.dk||{}; if(!o.claimStart) n.claimStart=Date.now(); n.p.arts=n.p.arts||{}; n.p.auto=n.p.auto||{}; n.p.sp=Object.assign(freshSP(),n.p.sp||{}); n.p.tech=n.p.tech||{}; n.p.sci=n.p.sci||{}; n.p.def=Object.assign(freshDef(),n.p.def||{}); n.p.def.known=n.p.def.known||[]; if(n.p.def.on&&n.p.def.next>Date.now()+WAVE_EVERY) n.p.def.next=Date.now()+WAVE_EVERY; n.p.def.debuff=0;
   if(n.g.planet>0){ const now=Date.now(); for(let i=1;i<=n.g.planet&&i<=COLS.length;i++){ const ck=COLS[i-1].k; if(!n.p.sp.col[ck]) n.p.sp.col[ck]={lvl:1,sup:now+6*3600000,last:now,stock:{},sci:0}; } n.g.planet=0; n.depth=Math.min(n.depth,CENTER); n.runMax=Math.min(n.runMax||0,CENTER); n.reached=0; n.convertedSpace=1; } n.rep=n.rep||{}; n.p.autoSmelt=n.p.autoSmelt||{}; (n.p.furn||[]).forEach(j=>{ if(!j) return; const done=Math.min(j.n,Math.floor((Date.now()-j.start)/(j.unit*1000))), mx=done+Math.max(1,Math.floor(2*3600/j.unit)); if(j.n>mx){ const ore=(INGOTS.find(x=>x.k===j.k)||{}).ore; if(ore) n.p.stock[ore]=(n.p.stock[ore]||0)+(j.n-mx)*100; j.n=mx; } }); if(n.p.forge){ const B=BITS.find(x=>x.k===n.p.forge.k); if(B&&n.p.forge.end-Date.now()>B.t*1000){ n.p.forge.end=Date.now()+B.t*1000; n.p.forge.t=B.t; } } if(!o.g && o.centerCount>0) n.g.cent.terre=1;
   while(n.rigs.length<RIGS.length) n.rigs.push(0);
   while(n.rigUp.length<RIGS.length) n.rigUp.push(0);
@@ -885,7 +885,7 @@ function badges(){
   document.querySelector('[data-t="up"]').classList.toggle("dot",canUp&&tab!=="up");
   document.querySelector('[data-t="surf"]').classList.toggle("dot",canSurf&&tab!=="surf");
   document.querySelector('[data-t="claim"]').classList.toggle("dot",canClaim&&tab!=="claim");
-  const dd=DF(); const dtb=document.querySelector('[data-t="def"]'); dtb.hidden=!dd.on; dtb.classList.toggle("dot",!!dd.on&&tab!=="def"&&dd.next-Date.now()<3600000&&!waveOutcome().win);
+  const dd=DF(); const dtb=document.querySelector('[data-t="def"]'); dtb.hidden=!dd.on; dtb.classList.toggle("dot",!!dd.on&&tab!=="def"&&dd.next-Date.now()<120000&&!waveOutcome().win);
   const sp=SP(), canSpace=!sp.atel?s.money>=ATEL_COST:((!sp.silo&&s.money>=SILO_COST)||(!sp.lab&&s.money>=LAB_COST)||canBuildRocket()||(sp.rockets>0&&COLS.some((c,i)=>!founded(c.k)&&(i===0||founded(COLS[i-1].k))&&canSend(c)&&!sp.flights.some(f=>f.to===c.k)))||(sp.lab&&TECHS.some(T=>canTech(T)&&Object.keys(T.cost).every(k=>founded(k)))));
   document.querySelector('[data-t="space"]').classList.toggle("dot",canSpace&&tab!=="space");
 }
@@ -1369,9 +1369,9 @@ function loop(t){
     badges();
   }
   secAcc+=dt; if(secAcc>1){ const sdt=secAcc; secAcc=0; asmTick(sdt);
-    { const d=DF(), nw=Date.now(); if(!d.on&&raceActive(0)){ d.on=1; d.next=nw+WAVE_EVERY; d.known=[0]; save(); setTimeout(()=>modal("👽 Alerte : des aliens!","Ton forage a réveillé quelque chose. Des Rampants 🐛 vont attaquer ta base sur Terre dans 6 h. Va dans le nouvel onglet Défense pour installer des mitrailleuses et renforcer ton mur."),800); }
-      if(d.on){ activeRaces().forEach(rr=>{ if(!d.known.includes(rr)){ d.known.push(rr); d.next=Math.max(d.next,nw+WAVE_EVERY); d.warned=0; save(); setTimeout(()=>modal(`👽 Nouvelle race : ${RACES[rr].n} ${RACES[rr].i}`,`Ta colonie sur ${PLANETS[rr].the} a attiré une nouvelle espèce. Elle attaquera la Terre avec la prochaine vague, dans environ 6 h. Ton arme la plus efficace : ${TURRETS[rr].i} ${TURRETS[rr].n}, faite avec les matériaux de ${PLANETS[rr].the}.`),1200); } });
-        if(!battle&&d.next-nw<1800000&&d.next>nw&&!d.warned){ d.warned=1; toast("👽 Vague d’aliens dans moins de 30 min!"); }
+    { const d=DF(), nw=Date.now(); if(!d.on&&raceActive(0)){ d.on=1; d.next=nw+WAVE_EVERY; d.known=[0]; save(); setTimeout(()=>modal("👽 Alerte : des aliens!","Ton forage a réveillé quelque chose. Des Rampants 🐛 vont attaquer ta base sur Terre dans 10 min, puis une vague revient toutes les 10 minutes. Si une vague perce, ils pillent tout ton argent. Va dans le nouvel onglet Défense pour installer des mitrailleuses et renforcer ton mur."),800); }
+      if(d.on){ activeRaces().forEach(rr=>{ if(!d.known.includes(rr)){ d.known.push(rr); d.next=Math.max(d.next,nw+WAVE_EVERY); d.warned=0; save(); setTimeout(()=>modal(`👽 Nouvelle race : ${RACES[rr].n} ${RACES[rr].i}`,`Ta colonie sur ${PLANETS[rr].the} a attiré une nouvelle espèce. Elle attaquera la Terre dès la prochaine vague, dans 10 min au plus. Ton arme la plus efficace : ${TURRETS[rr].i} ${TURRETS[rr].n}, faite avec les matériaux de ${PLANETS[rr].the}.`),1200); } });
+        if(!battle&&d.next-nw<120000&&d.next>nw&&!d.warned&&!waveOutcome().win){ d.warned=1; toast("👽 Vague dans moins de 2 min, et tu n’es pas prêt!"); }
         if(!battle&&nw>=d.next){ d.warned=0; startBattle(true); } } } const sev=spaceTick(Date.now()); sev.forEach((m,i)=>setTimeout(()=>toast(m),i*2200)); if(sev.length) save();
     const got=checkAch(); got.forEach((a,i)=>setTimeout(()=>toast(`🏆 Succès : ${a.n}`),i*1800));
     const f=tickFurn(); if(f.done.length) toast(`🔥 Four : ${f.done.map(j=>j.n+" × "+INGOTS.find(x=>x.k===j.k).n.toLowerCase()).join(", ")}, c’est prêt`);
