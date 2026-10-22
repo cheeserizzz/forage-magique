@@ -427,7 +427,7 @@ function freshSP(){ return {atel:0,chains:[],rob:0,silo:0,job:null,rockets:0,com
 const SP=()=>s.p.sp;
 const tech=k=>!!(s.p.tech||{})[k];
 const asmSpeed=()=>Math.pow(1.3,SP().rob)*(tech("asm")?1.5:1)*(tech("volc")?2:1);
-const cargoCap=()=>5000*(tech("cargo")?2:1)*(tech("iso")?2:1);
+const cargoCap=c=>5000*Math.pow(1.5,((c&&SP().col[c.k])?SP().col[c.k].lvl:1)-1)*(tech("cargo")?2:1)*(tech("iso")?2:1);
 const fuelFor=c=>Math.ceil(c.fuel*(tech("fuel")?.5:1));
 const travelMs=c=>c.travel*60000*(tech("meteo")?.7:1);
 const colOf=k=>COLS.find(c=>c.k===k);
@@ -449,15 +449,19 @@ function buildRocket(){ if(!canBuildRocket()) return false; const sp=SP(); for(c
 const canSend=c=>{ const sp=SP(); return sp.rockets>0&&(sp.comp.carburant||0)>=fuelFor(c); };
 function sendRocket(k,type){ const c=colOf(k), sp=SP(); if(!canSend(c)) return false; sp.rockets--; sp.comp.carburant-=fuelFor(c);
   let tr=travelMs(c); if(c.storm&&Math.random()<.35) tr*=1.5; const now=Date.now(); sp.flights.push({to:k,type,launch:now,arrive:now+tr,back:0,cargo:null,sci:0}); return true; }
+function colMats(c){ const st=SP().col[c.k], P=PLANETS[c.pi], others=[];
+  P.layers.forEach((L,j)=>{ if(st&&st.lvl>=1+3*j) L.ores.forEach(o=>{ if(!c.mat.some(m=>m[0]===o[0])&&!others.includes(o[0])) others.push(o[0]); }); });
+  const res=c.mat.map(m=>[m[0],m[1]*(others.length?.9:1)]); others.forEach(o=>res.push([o,.1/others.length])); return res; }
+const colLocked=c=>{ const P=PLANETS[c.pi], all=new Set(); P.layers.forEach(L=>L.ores.forEach(o=>{ if(!c.mat.some(m=>m[0]===o[0])) all.add(o[0]); })); const have=SP().col[c.k]?colMats(c).length-c.mat.length:0; return all.size-have; };
 function colTick(now){ const sp=SP(); COLS.forEach(c=>{ const st=sp.col[c.k]; if(!st) return; const t1=Math.min(now,st.sup); if(t1>st.last){ const mins=(t1-st.last)/60000, r=colRate(c);
-    c.mat.forEach(([ore,f])=>{ st.stock[ore]=(st.stock[ore]||0)+mins*r*f; }); st.sci+=mins*colSci(c); } st.last=Math.max(st.last,now); }); }
+    colMats(c).forEach(([ore,f])=>{ st.stock[ore]=(st.stock[ore]||0)+mins*r*f; }); st.sci+=mins*colSci(c); } st.last=Math.max(st.last,now); }); }
 function spaceTick(now){ const sp=SP(), ev=[];
   if(sp.job&&now>=sp.job.end){ sp.job=null; sp.rockets++; ev.push("🚀 Fusée prête au silo!"); }
   for(let i=sp.flights.length-1;i>=0;i--){ const f=sp.flights[i], c=colOf(f.to), P=PLANETS[c.pi];
     if(!f.back&&now>=f.arrive){
       if(f.type==="found"){ if(!sp.col[c.k]){ sp.col[c.k]={lvl:1,sup:f.arrive+6*3600000,last:f.arrive,stock:{},sci:0}; if(!s.g.done.includes(c.pi-1)) s.g.done.push(c.pi-1); ev.push(`🏳️ Colonie fondée sur ${P.the}! Bonus permanent : ${PLANETS[c.pi-1].bonusTxt}`); } sp.flights.splice(i,1); continue; }
       const st=sp.col[c.k]; if(st){ colTick(f.arrive); st.sup=Math.min(f.arrive+24*3600000,Math.max(st.sup,f.arrive)+6*3600000); st.last=Math.max(st.last,f.arrive);
-        const tot=Object.values(st.stock).reduce((a,b)=>a+b,0), take=Math.min(1,cargoCap()/Math.max(1,tot)); f.cargo={}; for(const [o,q] of Object.entries(st.stock)){ f.cargo[o]=q*take; st.stock[o]-=q*take; }
+        const tot=Object.values(st.stock).reduce((a,b)=>a+b,0), take=Math.min(1,cargoCap(c)/Math.max(1,tot)); f.cargo={}; for(const [o,q] of Object.entries(st.stock)){ f.cargo[o]=q*take; st.stock[o]-=q*take; }
         f.sci=Math.floor(st.sci); st.sci-=f.sci; }
       f.back=f.arrive+travelMs(c); }
     if(f.back&&now>=f.back){ let tot=0; for(const [o,q] of Object.entries(f.cargo||{})){ s.p.stock[o]=(s.p.stock[o]||0)+q; s.p.mined[o]=(s.p.mined[o]||0)+q; tot+=q; }
@@ -479,7 +483,7 @@ const RACES=[
  {n:"Essaim stellaire",i:"✨",col:"#fff2a0",col2:"psyche"}
 ];
 const TURRETS=[
- {n:"Mitrailleuse",i:"🔫",need:{},money:5e5},
+ {n:"Mitrailleuse",i:"🔫",need:{},money:5000},
  {n:"Canon à hélium",i:"💥",need:{helium:10,titane:10},money:1e9},
  {n:"Canon cryogénique",i:"❄️",need:{glace:10,opale:5},money:1e10},
  {n:"Canon magnétique",i:"🧲",need:{fermerc:15},money:1e11},
@@ -489,11 +493,11 @@ const TURRETS=[
  {n:"Laser stellaire",i:"🔆",need:{psyche:10,platast:10},money:1e15}
 ];
 const WAVE_EVERY=10*60000, WAVE_GROW=1.04, TUR_BASE=25, TUR_UP=1.15, CROSS=.2, WALL_MAX=10;
-function freshDef(){ return {on:0,next:0,wave:0,k:{},tur:{},wall:0,buff:0,debuff:0,log:[]}; }
+function freshDef(){ return {on:0,next:0,wave:0,k:{},tur:{},wall:0,buff:0,debuff:0,log:[],ad:{}}; }
 const DF=()=>s.p.def;
 const raceActive=r=>r===0?(s.claims>0||s.coresTotal>0||DF().on):!!founded(RACES[r].col2);
 const activeRaces=()=>RACES.map((x,i)=>i).filter(raceActive);
-const raceStr=r=>100*Math.pow(WAVE_GROW,DF().k[r]||0)*(1+.15*r);
+const raceStr=r=>{ const k=DF().k[r]||0; return 100*Math.pow(WAVE_GROW,k)*(1+.15*r)*((DF().ad||{})[r]||1)*(k<3?.3:1); };
 const turN=t=>((DF().tur[t]||{}).n)||0, turLv=t=>((DF().tur[t]||{}).lv)||0;
 const turPow=t=>TUR_BASE*turN(t)*Math.pow(TUR_UP,turLv(t));
 const turCostMul=t=>Math.pow(1.2,turN(t));
@@ -505,7 +509,7 @@ const defMult=()=>{ const n=Date.now(), d=DF(); return n<d.buff?2:1; };
 function canPayTur(t,mul){ const T=TURRETS[t]; return s.money>=T.money*mul&&Object.entries(T.need).every(([k,q])=>(s.p.ingots[k]||0)>=Math.ceil(q*mul)); }
 function payTur(t,mul){ const T=TURRETS[t]; s.money-=T.money*mul; for(const [k,q] of Object.entries(T.need)) s.p.ingots[k]-=Math.ceil(q*mul); }
 function waveOutcome(){ const rs=activeRaces(); const det=rs.map(r=>{ const need=raceStr(r)*(1-wallAbs()), have=defVs(r); return {r,need,have,ok:have>=need,ratio:Math.min(1,have/Math.max(1,need))}; }); return {det,win:det.every(x=>x.ok)}; }
-function resolveWave(){ const d=DF(), o=waveOutcome(), now=Date.now(); d.wave++; o.det.forEach(x=>{ d.k[x.r]=(d.k[x.r]||0)+1; });
+function resolveWave(){ const d=DF(), o=waveOutcome(), now=Date.now(); d.wave++; d.ad=d.ad||{}; o.det.forEach(x=>{ d.k[x.r]=(d.k[x.r]||0)+1; const ratio=x.have/Math.max(1,x.need), a=d.ad[x.r]||1; d.ad[x.r]=x.ok?(ratio>2?a*Math.min(4,ratio/1.5):a):Math.max(.05,a*.8); });
   let msg; if(o.win){ const c=1+Math.floor(d.wave/10); s.cores+=c; s.coresTotal+=c; d.buff=now+WAVE_EVERY; msg=`Victoire! Production ×2 jusqu’à la prochaine vague et +${c} 🧪.`; }
   else { const lost=s.money; s.money=0; msg=`Défaite… Les aliens ont pillé tout ton argent (${money(lost)}). Tu gardes tout le reste : équipement, améliorations, bâtiments et production.`; }
   d.log.unshift({w:d.wave,win:o.win,t:now}); d.log=d.log.slice(0,8); d.next=now+WAVE_EVERY; return {o,msg}; }
@@ -534,7 +538,8 @@ const collMult=()=>1+.03*s.p.ct;
 function collTier(name){ const t=s.p.mined[name]||0; return COLL_TH.filter(x=>t>=x).length; }
 function calcCT(){ s.p.ct=ORE_LIST.reduce((a,o)=>a+collTier(o.n),0); }
 const coreRate=()=>s.perks.core2?.10:.05;
-const coreMult=()=>1+coreRate()*s.coresTotal;
+const coresEff=()=>{ const c=s.coresTotal; return c<=1000?c:1000*Math.pow(c/1000,.75); };
+const coreMult=()=>1+coreRate()*coresEff();
 const storming=()=>!!PL().storm&&Date.now()<s.stormUntil;
 const heatF=()=>(PL().heat&&!s.p.bits.cool)?1/(1+s.depth/300000):1;
 const frenzy=()=>(Date.now()<s.frenzyUntil?7:1)*(storming()?.4:1)*heatF()*defMult();
@@ -641,7 +646,7 @@ const rocketFor=()=>BITS.find(b=>b.k==="rocket8");
 const canLaunch=()=>allCols()&&!!s.p.bits.rocket8&&!!s.g.cent.terre;
 // ---------- automatisation ----------
 const AUTOS=[
- {k:"rigs",n:"Contremaître d’équipement",i:"👷",d:"Achète automatiquement l’équipement le moins cher",c:3},
+ {k:"rigs",n:"Contremaître d’équipement",i:"👷",d:"Achète automatiquement l’équipement le plus rentable",c:3},
  {k:"rigup",n:"Ingénieur",i:"🧑‍🔧",d:"Achète automatiquement les améliorations d’équipement",c:8},
  {k:"ups",n:"Gestionnaire",i:"📋",d:"Achète automatiquement les améliorations générales",c:15},
  {k:"bld",n:"Chef de chantier",i:"🦺",d:"Construit et améliore automatiquement les bâtiments de surface",c:25},
@@ -655,7 +660,8 @@ const autoCost=a=>a.c*Math.pow(2.2,autoLv(a));
 const autoInt=a=>10/Math.pow(1.6,Math.max(0,autoLv(a)-1));
 function runAuto(k){
   const pick=(list)=>{ let best=null; for(const o of list){ if(o.c<=s.money&&(!best||o.c<best.c)) best=o; } if(best){ s.money-=best.c; best.f(); return true; } return false; };
-  if(k==="rigs") return pick(RIGS.map((r,i)=>({i,c:rigCost(i,1)})).filter(o=>rigUnlocked(o.i)&&(o.i===0||s.rigs[o.i-1]>0||s.rigs[o.i]>0||!!RIGS[o.i].tech)).map(o=>({c:o.c,f:()=>s.rigs[o.i]++})));
+  if(k==="rigs"){ let best=null; RIGS.forEach((rg,i)=>{ if(!(rigUnlocked(i)&&(i===0||s.rigs[i-1]>0||s.rigs[i]>0||!!rg.tech))) return; const cc=rigCost(i,1); if(cc>s.money) return; const v=cc/(rg.e*Math.pow(2,s.rigUp[i])); if(!best||v<best.v) best={i,cc,v}; }); if(best){ s.money-=best.cc; s.rigs[best.i]++; return true; } return false; }
+  if(k==="rigs_old") return pick(RIGS.map((r,i)=>({i,c:rigCost(i,1)})).filter(o=>rigUnlocked(o.i)&&(o.i===0||s.rigs[o.i-1]>0||s.rigs[o.i]>0||!!RIGS[o.i].tech)).map(o=>({c:o.c,f:()=>s.rigs[o.i]++})));
   if(k==="rigup") return pick(RIGS.map((r,i)=>i).filter(rigUpReady).map(i=>({c:rigUpCost(i),f:()=>s.rigUp[i]++})));
   if(k==="ups") return pick(UPS.filter(u=>s.up[u.k]<u.max).map(u=>({c:upCost(u),f:()=>s.up[u.k]++})));
   if(k==="bld") return pick(BLD.filter(b=>s.b[b.k]<b.max).map(b=>({c:bCost(b),f:()=>s.b[b.k]++})));
@@ -889,7 +895,7 @@ function refreshClaim(){
   const lb=$("launchBtn"); if(lb && !lb.dataset.armed) lb.disabled=!canLaunch();
   if(!b.dataset.armed) b.textContent=g>=1?`Ouvrir un nouveau claim (+${num(g)} carotte${g>1?"s":""})`:"Pas encore assez de carottes";
   b.disabled=g<1;
-  $("cNow").textContent=num(s.cores); $("cTot").textContent=num(s.coresTotal); $("cBonus").textContent="+"+num(Math.round(s.coresTotal*coreRate()*100))+" %";
+  $("cNow").textContent=num(s.cores); $("cTot").textContent=num(s.coresTotal); $("cBonus").textContent="+"+num(Math.round(coresEff()*coreRate()*100))+" %";
   PERKS.forEach(p=>setP("p_p"+p.k,s.perks[p.k]?"Acquis":num(p.c)+" 🧪",s.cores>=p.c,s.perks[p.k]));
   REPS.forEach(R=>{ if(!$("p_rp"+R.k)) return; const lv=repLv(R.k), c=repCost(R); setP("p_rp"+R.k,num(c)+" 🧪",s.cores>=c); $("o_rp"+R.k).textContent="niv. "+lv;
     $("d_rp"+R.k).textContent=R.k==="off"?`${R.d} (actuel : +${lv} h)`:`${R.d} ×${String(R.per).replace(".",",")} par niveau (actuel : ×${rate(repMult(R.k))})`; });
@@ -1090,7 +1096,7 @@ function refreshSpace(){
   const sp=SP(), now=Date.now();
   if(!sp.atel){ setP("p_spatel",money(ATEL_COST),s.money>=ATEL_COST); return; }
   sp.chains.forEach((c,i)=>{ const el=$("cht"+i); if(!el) return; const R=c.r&&COMPS.find(x=>x.k===c.r);
-    el.innerHTML=R?`🏭 <b>Chaîne ${i+1}</b> : ${R.i} ${R.n} (${dur(R.t/asmSpeed())} chacun)<br><small style="color:${c.blocked?"var(--bad)":"var(--muted)"}">${c.blocked?`⚠️ En attente : ${c.blocked}`:`En production, ${num(c.made||0)} fabriqués`}</small><div class="pbar"><i style="width:${Math.min(100,(c.prog||0)/R.t*100)}%"></i></div>`:`🏭 <b>Chaîne ${i+1}</b> : à l’arrêt. Choisis une recette.`;
+    el.innerHTML=R?`🏭 <b>Chaîne ${i+1}</b> : ${R.i} ${R.n} (${dur(R.t/asmSpeed())} chacun)<br><small style="color:${c.blocked?"var(--bad)":"var(--muted)"}">${(()=>{ const miss=Object.entries(R.in).find(([key,q])=>!haveIn(key,q)); return c.blocked||miss?`⚠️ En attente : ${c.blocked||inName(miss[0])} (il en faut ${miss?miss[1]:""})`:`✅ En production : ${num(c.made||0)} fabriqués, prochain dans ${dur(Math.max(0,(R.t-(c.prog||0))/asmSpeed()))}`; })()}</small><div class="pbar"><i style="width:${Math.min(100,(c.prog||0)/R.t*100)}%"></i></div>`:`🏭 <b>Chaîne ${i+1}</b> : à l’arrêt. Choisis une recette.`;
     COMPS.forEach(R2=>{ const b=$(`chr${i}_${R2.k}`); if(b) b.classList.toggle("on",c.r===R2.k); }); });
   const cm=sp.chains.length>=CHAIN_MAX, cc=CHAIN_COST[sp.chains.length]||0; setP("p_spch",cm?"Max":money(cc),!cm&&s.money>=cc,cm); $("o_spch").textContent=sp.chains.length+"/"+CHAIN_MAX;
   const rm=sp.rob>=ROB_MAX; setP("p_sprob",rm?"Max":money(ROB_COST(sp.rob)),!rm&&s.money>=ROB_COST(sp.rob),rm); $("o_sprob").textContent="niv. "+sp.rob;
@@ -1105,7 +1111,7 @@ function refreshSpace(){
       fb.hidden=false; fb.disabled=!prevOk||!canSend(c)||fly>0; fb.textContent=fly?"🛫 Fusée en route…":"🏳️ Fonder la colonie"; sb.hidden=true; ub.hidden=true; $("colb_"+c.k).style.opacity=prevOk?1:.55; return; }
     $("colb_"+c.k).style.opacity=1;
     const supH=Math.max(0,(st.sup-now)/3600000), stock=Object.values(st.stock).reduce((a,b)=>a+b,0);
-    el.innerHTML=`${P.e} <b>Colonie ${P.n}</b>, niveau ${st.lvl}<br><small>${supH>0?`✅ Ravitaillée encore ${dur(supH*3600)}`:`<span style="color:var(--bad)">⚠️ En panne : envoie une fusée de ravitaillement</span>`}<br>Production : ${num(colRate(c))} t/min (${c.mat.map(m=>m[0].toLowerCase()).join(", ")}), ${rate(colSci(c)*60)} ${c.sci}/h<br>En attente au quai : ${num(stock)} t et ${Math.floor(st.sci)} ${c.sci}${fly?`, ${fly} fusée${fly>1?"s":""} en route`:""}<br><span style="color:var(--muted)">Trajet ${dur(travelMs(c)/1000)}, ${fuelFor(c)} carburant, soute de ${num(cargoCap())} t</span></small>`;
+    el.innerHTML=`${P.e} <b>Colonie ${P.n}</b>, niveau ${st.lvl}<br><small>${supH>0?`✅ Ravitaillée encore ${dur(supH*3600)}`:`<span style="color:var(--bad)">⚠️ En panne : envoie une fusée de ravitaillement</span>`}<br>Production : ${num(colRate(c))} t/min (${c.mat.map(m=>m[0].toLowerCase()).join(", ")}${colMats(c).length>c.mat.length?` et ${colMats(c).length-c.mat.length} minerais rares`:""}), ${rate(colSci(c)*60)} ${c.sci}/h<br>En attente au quai : ${num(stock)} t et ${Math.floor(st.sci)} ${c.sci}${fly?`, ${fly} fusée${fly>1?"s":""} en route`:""}<br><span style="color:var(--muted)">Trajet ${dur(travelMs(c)/1000)}, ${fuelFor(c)} carburant, soute de ${num(cargoCap(c))} t${colLocked(c)?`, ${colLocked(c)} minerais rares à débloquer en montant de niveau`:""}</span></small>`;
     fb.hidden=true; sb.hidden=false; sb.disabled=!canSend(c);
     const uc=colUpCost(c), canUp=st.lvl<COL_MAX&&s.money>=uc.money&&(sp.comp.plaque||0)>=uc.plaque&&(sp.comp.circuit||0)>=uc.circuit;
     ub.hidden=false; ub.disabled=!canUp; ub.textContent=st.lvl>=COL_MAX?"Niveau max":`⬆️ Niv. ${st.lvl+1} : ${money(uc.money)}, ${uc.plaque} plaques, ${uc.circuit} circuits`; });
@@ -1116,7 +1122,7 @@ function refreshSpace(){
 }
 function spaceClick(e){
   const sp=SP();
-  const cr=e.target.closest("[data-chrec]"); if(cr){ const [i,k]=cr.dataset.chrec.split(":"); const c=sp.chains[+i]; c.r=c.r===k?null:k; c.prog=0; c.blocked=""; refreshSpace(); save(); return true; }
+  const cr=e.target.closest("[data-chrec]"); if(cr){ const [i,k]=cr.dataset.chrec.split(":"); const c=sp.chains[+i]; c.r=c.r===k?null:k; { const R=COMPS.find(x=>x.k===k); toast(c.r?`🏭 Chaîne ${+i+1} : ${R.n.toLowerCase()} en continu, ${dur(R.t/asmSpeed())} chacun`:`🏭 Chaîne ${+i+1} arrêtée`); } c.prog=0; c.blocked=""; refreshSpace(); save(); return true; }
   if(e.target.closest("[data-buildrocket]")){ if(buildRocket()) toast("🗼 Assemblage de la fusée lancé"); refreshSpace(); save(); return true; }
   const cf=e.target.closest("[data-colfound]"); if(cf){ const c=colOf(cf.dataset.colfound); if(sendRocket(c.k,"found")){ toast(`🚀 Décollage vers ${PLANETS[c.pi].the} pour fonder la colonie!`); shakeApp(); } refreshSpace(); save(); return true; }
   const cs=e.target.closest("[data-colsend]"); if(cs){ const c=colOf(cs.dataset.colsend); if(sendRocket(c.k,"sup")) toast(`🚀 Fusée de ravitaillement vers ${PLANETS[c.pi].the}`); refreshSpace(); save(); return true; }
@@ -1218,7 +1224,7 @@ function doClaim(b){
   $("boomH").textContent="BOUM!"; $("boomP").innerHTML=`Claim n° ${n}<br>+${num(g)} carotte${g>1?"s":""} de forage`;
   $("boom").hidden=false; shakeApp();
   setTimeout(()=>{
-    const prev=s; prev.cores+=g; prev.coresTotal+=g; prev.claims=n;
+    const prev=s; prev.cores+=g; prev.coresTotal+=g; prev.claims=n; if(!prev.reached&&prev.g.dk&&prev.g.dk.terre>1) prev.g.dk.terre=Math.max(1,prev.g.dk.terre*.7);
     s=fresh(prev); save(); cloudSave(); tab="claim"; build(); badges();
   },700);
   setTimeout(()=>{ $("boom").hidden=true; },3200);
@@ -1418,7 +1424,7 @@ function loop(t){
   }
   secAcc+=dt; if(secAcc>1){ const sdt=secAcc; secAcc=0; asmTick(sdt);
     { const nw=Date.now(); if(!s.nextAd||s.nextAd>nw+20*60000) s.nextAd=nw+(12+Math.random()*6)*60000; if(nw>=s.nextAd&&!adShown&&$("modal").hidden&&!battle){ s.nextAd=nw+(12+Math.random()*6)*60000; showAdBubble(); } }
-    { const d=DF(), nw=Date.now(); if(!d.on&&raceActive(0)){ d.on=1; d.next=nw+WAVE_EVERY; d.known=[0]; save(); setTimeout(()=>modal("👽 Alerte : des aliens!","Ton forage a réveillé quelque chose. Des Rampants 🐛 vont attaquer ta base sur Terre dans 10 min, puis une vague revient toutes les 10 minutes. Si une vague perce, ils pillent tout ton argent. Va dans le nouvel onglet Défense pour installer des mitrailleuses et renforcer ton mur."),800); }
+    { const d=DF(), nw=Date.now(); if(!d.on&&raceActive(0)){ d.on=1; d.next=nw+3*WAVE_EVERY; d.known=[0]; save(); setTimeout(()=>modal("👽 Alerte : des aliens!","Ton forage a réveillé quelque chose. Des Rampants 🐛 vont attaquer ta base sur Terre dans 30 min, puis une vague revient toutes les 10 minutes. Les 3 premières sont faibles, et les aliens s’adaptent : si tu les écrases trop facilement, ils reviennent plus forts. Si une vague perce, ils pillent tout ton argent. Va dans le nouvel onglet Défense pour installer des mitrailleuses et renforcer ton mur."),800); }
       if(d.on){ activeRaces().forEach(rr=>{ if(!d.known.includes(rr)){ d.known.push(rr); d.next=Math.max(d.next,nw+WAVE_EVERY); d.warned=0; save(); setTimeout(()=>modal(`👽 Nouvelle race : ${RACES[rr].n} ${RACES[rr].i}`,`Ta colonie sur ${PLANETS[rr].the} a attiré une nouvelle espèce. Elle attaquera la Terre dès la prochaine vague, dans 10 min au plus. Ton arme la plus efficace : ${TURRETS[rr].i} ${TURRETS[rr].n}, faite avec les matériaux de ${PLANETS[rr].the}.`),1200); } });
         if(!battle&&d.next-nw<120000&&d.next>nw&&!d.warned&&!waveOutcome().win){ d.warned=1; toast("👽 Vague dans moins de 2 min, et tu n’es pas prêt!"); }
         if(!battle&&nw>=d.next){ d.warned=0; startBattle(true); } } } const sev=spaceTick(Date.now()); sev.forEach((m,i)=>setTimeout(()=>toast(m),i*2200)); if(sev.length) save();
