@@ -39,6 +39,9 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 #dyn[hidden]{display:none}
 #frenzy{position:absolute;left:10px;top:10px;background:#ff2d6b;color:#fff;font-weight:800;padding:5px 10px;border-radius:8px;font-size:.85rem}
 #frenzy[hidden]{display:none}
+#objBtn{position:absolute;right:106px;top:10px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.85);font-size:1.2rem;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer}
+#objBtn.ready{background:#ffc20e;box-shadow:0 0 0 3px #fff,0 0 14px rgba(255,194,14,.9);animation:objPulse 1s ease-in-out infinite alternate}
+@keyframes objPulse{from{transform:scale(1)}to{transform:scale(1.12)}}
 #trophyBtn{position:absolute;right:58px;top:10px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.85);font-size:1.2rem;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer}
 .pbar{height:6px;background:var(--line);border-radius:3px;margin-top:7px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--hiviz)}
 .vit{display:flex;align-items:center;gap:12px;padding:8px 4px;border-bottom:1px solid var(--line)}.vit span:nth-child(2){flex:1}.vit small{display:block;color:var(--muted);font-size:.78rem}.stars{color:#e0a800;letter-spacing:1px}
@@ -139,6 +142,7 @@ button:focus-visible{outline:3px solid var(--hiviz);outline-offset:2px}
     <div id="frenzy" hidden></div>
     <button id="cloudBtn" aria-label="Sauvegarde">💾</button>
     <button id="trophyBtn" aria-label="Succès et vitrine">🏆</button>
+    <button id="objBtn" aria-label="Objectifs">🎯</button>
     <button id="dyn" hidden aria-label="Dynamitage">🧨<small id="dynT"></small></button>
     <div id="toast"></div>
     <button id="adBubble" hidden aria-label="Bonus ×2">×2</button>
@@ -447,7 +451,7 @@ function asmTick(dt){ const sp=SP(); if(!sp.atel) return; const v=asmSpeed();
 const canBuildRocket=()=>{ const sp=SP(); return sp.silo&&!sp.job&&Object.entries(ROCKET_NEED).every(([k,q])=>(sp.comp[k]||0)>=q); };
 function buildRocket(){ if(!canBuildRocket()) return false; const sp=SP(); for(const [k,q] of Object.entries(ROCKET_NEED)) sp.comp[k]-=q; const t=ROCKET_T/(tech("silo2")?2:1)/Math.pow(1.3,sp.rob); sp.job={end:Date.now()+t*1000,t}; return true; }
 const canSend=c=>{ const sp=SP(); return sp.rockets>0&&(sp.comp.carburant||0)>=fuelFor(c); };
-function sendRocket(k,type){ const c=colOf(k), sp=SP(); if(!canSend(c)) return false; sp.rockets--; sp.comp.carburant-=fuelFor(c);
+function sendRocket(k,type){ const c=colOf(k), sp=SP(); if(!canSend(c)) return false; sp.rockets--; sp.launches=(sp.launches||0)+1; sp.comp.carburant-=fuelFor(c);
   let tr=travelMs(c); if(c.storm&&Math.random()<.35) tr*=1.5; const now=Date.now(); sp.flights.push({to:k,type,launch:now,arrive:now+tr,back:0,cargo:null,sci:0}); return true; }
 function colMats(c){ const st=SP().col[c.k], P=PLANETS[c.pi], others=[];
   P.layers.forEach((L,j)=>{ if(st&&st.lvl>=1+3*j) L.ores.forEach(o=>{ if(!c.mat.some(m=>m[0]===o[0])&&!others.includes(o[0])) others.push(o[0]); }); });
@@ -510,7 +514,7 @@ function canPayTur(t,mul){ const T=TURRETS[t]; return s.money>=T.money*mul&&Obje
 function payTur(t,mul){ const T=TURRETS[t]; s.money-=T.money*mul; for(const [k,q] of Object.entries(T.need)) s.p.ingots[k]-=Math.ceil(q*mul); }
 function waveOutcome(){ const rs=activeRaces(); const det=rs.map(r=>{ const need=raceStr(r)*(1-wallAbs()), have=defVs(r); return {r,need,have,ok:have>=need,ratio:Math.min(1,have/Math.max(1,need))}; }); return {det,win:det.every(x=>x.ok)}; }
 function resolveWave(){ const d=DF(), o=waveOutcome(), now=Date.now(); d.wave++; d.ad=d.ad||{}; o.det.forEach(x=>{ d.k[x.r]=(d.k[x.r]||0)+1; const ratio=x.have/Math.max(1,x.need), a=d.ad[x.r]||1; d.ad[x.r]=x.ok?(ratio>2?a*Math.min(4,ratio/1.5):a):Math.max(.05,a*.8); });
-  let msg; if(o.win){ const c=1+Math.floor(d.wave/10); s.cores+=c; s.coresTotal+=c; d.buff=now+WAVE_EVERY; msg=`Victoire! Production ×2 jusqu’à la prochaine vague et +${c} 🧪.`; }
+  let msg; if(o.win){ d.wins=(d.wins||0)+1; const c=1+Math.floor(d.wave/10); s.cores+=c; s.coresTotal+=c; d.buff=now+WAVE_EVERY; msg=`Victoire! Production ×2 jusqu’à la prochaine vague et +${c} 🧪.`; }
   else { const lost=s.money; s.money=0; msg=`Défaite… Les aliens ont pillé tout ton argent (${money(lost)}). Tu gardes tout le reste : équipement, améliorations, bâtiments et production.`; }
   d.log.unshift({w:d.wave,win:o.win,t:now}); d.log=d.log.slice(0,8); d.next=now+WAVE_EVERY; return {o,msg}; }
 
@@ -674,6 +678,31 @@ function runAuto(k){
 }
 function adjustDiff(){ const mins=Math.max(.05,(Date.now()-(s.claimStart||Date.now()))/60000); const f=Math.min(1000,Math.max(.5,Math.pow(DIFF_TARGET/mins,.8)));
   s.g.dk=s.g.dk||{}; const old=dk(), nw=Math.max(1,old*f); s.g.dk[PL().k]=nw; return {mins,old,nw}; }
+// ---------- objectifs ----------
+const nice=x=>{ if(x<10) return Math.ceil(x); const p=Math.pow(10,Math.floor(Math.log10(x))); return Math.ceil(x/p)*p; };
+const topRig=()=>{ let i=0; RIGS.forEach((r,j)=>{ if(s.rigs[j]>0) i=j; }); return i; };
+const OBJT={
+ rig:{ok:()=>true,mk:()=>{ const i=topRig(); return {i,base:0,need:s.rigs[i]+10}; },val:o=>s.rigs[o.i],txt:o=>`Posséder ${o.need} × ${RIGS[o.i].n.toLowerCase()}`},
+ earn:{ok:()=>true,mk:()=>({base:0,need:nice(Math.max(2e4,s.runEarned*25))}),val:()=>s.runEarned,txt:o=>`Gagner ${money(o.need)} dans ce claim`},
+ depth:{ok:()=>s.depth<CENTER*.4,mk:()=>({base:0,need:Math.min(CENTER,nice(Math.max(150,s.depth*3)))}),val:()=>s.depth,txt:o=>`Atteindre ${meters(o.need)} de profondeur`},
+ center:{ok:()=>!s.reached&&s.depth>CENTER*.2,mk:()=>({base:0,need:1}),val:()=>s.reached?1:0,txt:()=>"Atteindre le centre de la Terre dans ce claim"},
+ claim:{ok:()=>coresGain()>=1,mk:()=>({base:s.claims,need:1}),val:()=>s.claims,txt:()=>"Ouvrir un nouveau claim"},
+ filon:{ok:()=>true,mk:()=>({base:s.p.filons,need:2}),val:()=>s.p.filons,txt:o=>`Attraper ${o.need} filons dorés`},
+ dyn:{ok:()=>s.b.dyn>0,mk:()=>({base:s.p.dyns,need:3}),val:()=>s.p.dyns,txt:o=>`Dynamiter ${o.need} fois`},
+ ingot:{ok:()=>!!s.p.fond,mk:()=>({base:s.p.made,need:nice(25+s.p.made*.2)}),val:()=>s.p.made,txt:o=>`Couler ${num(o.need)} lingots`},
+ forge:{ok:()=>!!s.p.fond&&BITS.some(b=>!b.rocket&&!s.p.bits[b.k]),mk:()=>({base:Object.keys(s.p.bits).length,need:1}),val:()=>Object.keys(s.p.bits).length,txt:()=>"Forger un nouveau trépan"},
+ wave:{ok:()=>!!DF().on,mk:()=>({base:DF().wins||0,need:3}),val:()=>DF().wins||0,txt:o=>`Repousser ${o.need} vagues d’aliens`},
+ rocket:{ok:()=>!!SP().silo,mk:()=>({base:SP().launches||0,need:2}),val:()=>SP().launches||0,txt:o=>`Lancer ${o.need} fusées`},
+ colony:{ok:()=>!!SP().silo&&!allCols(),mk:()=>({base:COLS.filter(c=>founded(c.k)).length,need:1}),val:()=>COLS.filter(c=>founded(c.k)).length,txt:()=>"Fonder une nouvelle colonie"},
+ tech:{ok:()=>!!SP().lab&&TECHS.some(T=>!tech(T.k)&&Object.keys(T.cost).every(k=>founded(k))),mk:()=>({base:Object.keys(s.p.tech||{}).length,need:1}),val:()=>Object.keys(s.p.tech||{}).length,txt:()=>"Découvrir une technologie"},
+ taps:{ok:()=>true,mk:()=>({base:s.p.taps,need:150}),val:()=>s.p.taps,txt:o=>`Toucher le puits ${o.need} fois`}
+};
+const objProg=o=>{ const T=OBJT[o.k]; return T?Math.max(0,Math.min(o.need,T.val(o)-(o.base||0))):0; };
+function newObj(){ const act=(s.p.obj||[]).map(o=>o.k); const pool=Object.keys(OBJT).filter(k=>!act.includes(k)&&OBJT[k].ok()); if(!pool.length) return null;
+  const k=pool[Math.floor(Math.random()*pool.length)], o=Object.assign({k},OBJT[k].mk()); o.rw=Math.random()<.5?"money":"cores"; return o; }
+function fillObj(){ s.p.obj=(s.p.obj||[]).filter(o=>OBJT[o.k]); while(s.p.obj.length<3){ const o=newObj(); if(!o) break; s.p.obj.push(o); } }
+const objCores=()=>1+Math.floor(Math.log10(s.totalEarned+10)/3);
+const objMoney=()=>Math.max(5000,autoRateMoney()*600);
 function autoRateMoney(){ return autoEffort()*moneyPerEffort(); }
 // ===== INTERFACE =====
 const KEY="forage-test-v1", OFFLINE_BASE=8*3600;
@@ -695,7 +724,7 @@ function save(){ s.lastTs=Date.now(); try{ localStorage.setItem(KEY,JSON.stringi
 function normalize(o){
   if(!o || !Array.isArray(o.rigs)) return null;
   const n=Object.assign(fresh(),o);
-  n.up=Object.assign(fresh().up,o.up||{}); n.b=Object.assign(fresh().b,o.b||{}); n.perks=o.perks||{}; n.p=Object.assign(freshP(),o.p||{}); if(!n.p.furn.length) n.p.furn=[null]; n.g=Object.assign({planet:0,done:[],cent:{},era:0,dk:{}},o.g||{}); n.g.dk=n.g.dk||{}; if(!o.claimStart) n.claimStart=Date.now(); n.p.arts=n.p.arts||{}; n.p.auto=n.p.auto||{}; n.p.sp=Object.assign(freshSP(),n.p.sp||{}); n.p.tech=n.p.tech||{}; n.p.sci=n.p.sci||{}; n.p.def=Object.assign(freshDef(),n.p.def||{}); n.p.def.known=n.p.def.known||[]; if(n.p.def.on&&n.p.def.next>Date.now()+WAVE_EVERY) n.p.def.next=Date.now()+WAVE_EVERY; n.p.def.debuff=0;
+  n.up=Object.assign(fresh().up,o.up||{}); n.b=Object.assign(fresh().b,o.b||{}); n.perks=o.perks||{}; n.p=Object.assign(freshP(),o.p||{}); if(!n.p.furn.length) n.p.furn=[null]; n.g=Object.assign({planet:0,done:[],cent:{},era:0,dk:{}},o.g||{}); n.g.dk=n.g.dk||{}; if(!o.claimStart) n.claimStart=Date.now(); n.p.arts=n.p.arts||{}; n.p.auto=n.p.auto||{}; n.p.obj=n.p.obj||[]; n.p.sp=Object.assign(freshSP(),n.p.sp||{}); n.p.tech=n.p.tech||{}; n.p.sci=n.p.sci||{}; n.p.def=Object.assign(freshDef(),n.p.def||{}); n.p.def.known=n.p.def.known||[]; if(n.p.def.on&&n.p.def.next>Date.now()+WAVE_EVERY) n.p.def.next=Date.now()+WAVE_EVERY; n.p.def.debuff=0;
   if(n.g.planet>0){ const now=Date.now(); for(let i=1;i<=n.g.planet&&i<=COLS.length;i++){ const ck=COLS[i-1].k; if(!n.p.sp.col[ck]) n.p.sp.col[ck]={lvl:1,sup:now+6*3600000,last:now,stock:{},sci:0}; } n.g.planet=0; n.depth=Math.min(n.depth,CENTER); n.runMax=Math.min(n.runMax||0,CENTER); n.reached=0; n.convertedSpace=1; } n.rep=n.rep||{}; n.p.autoSmelt=n.p.autoSmelt||{}; (n.p.furn||[]).forEach(j=>{ if(!j) return; const done=Math.min(j.n,Math.floor((Date.now()-j.start)/(j.unit*1000))), mx=done+Math.max(1,Math.floor(2*3600/j.unit)); if(j.n>mx){ const ore=(INGOTS.find(x=>x.k===j.k)||{}).ore; if(ore) n.p.stock[ore]=(n.p.stock[ore]||0)+(j.n-mx)*100; j.n=mx; } }); if(n.p.forge){ const B=BITS.find(x=>x.k===n.p.forge.k); if(B&&n.p.forge.end-Date.now()>B.t*1000){ n.p.forge.end=Date.now()+B.t*1000; n.p.forge.t=B.t; } } if(!o.g && o.centerCount>0) n.g.cent.terre=1;
   while(n.rigs.length<RIGS.length) n.rigs.push(0);
   while(n.rigUp.length<RIGS.length) n.rigUp.push(0);
@@ -1203,6 +1232,23 @@ $("adBubble").addEventListener("click",()=>{ const b=$("adBubble"); b.hidden=tru
     const iv=setInterval(()=>{ n--; if(n>0) cn.textContent=n; else { clearInterval(iv); cn.textContent=""; x.hidden=false; } },1000);
     x.onclick=()=>{ ov.hidden=true; s.money*=2; shakeApp(); toast(`💰 Argent doublé : ${money(s.money)}`); save(); }; }; });
 
+// ---------- objectifs (interface) ----------
+function rwTxt(o){ return o.rw==="money"?`💰 ${money(objMoney())}`:`🧪 ${objCores()} carotte${objCores()>1?"s":""}`; }
+function openObj(){ fillObj();
+  let h=`<h2>🎯 Objectifs</h2><p style="font-size:.88rem;color:var(--muted);margin:0 0 10px">Trois défis à la fois. Réclame ta récompense quand un défi est rempli, et un nouveau le remplace.</p>`;
+  s.p.obj.forEach((o,i)=>{ const p=objProg(o), done=p>=o.need;
+    h+=`<div class="box" style="margin-bottom:8px;padding:11px 12px;${done?"border-color:var(--good)":""}"><b>${OBJT[o.k].txt(o)}</b><br><small style="color:var(--muted)">${num(p)} / ${num(o.need)}, récompense : ${rwTxt(o)}</small><div class="pbar"><i style="width:${Math.min(100,p/o.need*100)}%;${done?"background:var(--good)":""}"></i></div>
+     <div style="display:flex;gap:6px;margin-top:8px">${done?`<button class="btn" data-objclaim="${i}" style="margin:0;background:var(--good);color:#fff">🎁 Réclamer</button>`:`<button class="tog" data-objskip="${i}">Passer ce défi</button>`}</div></div>`; });
+  if(!s.p.obj.length) h+=`<p>Aucun défi pour l’instant.</p>`;
+  h+=`<button class="btn" id="mClose">Fermer</button>`;
+  $("sheet").innerHTML=h; $("modal").hidden=false; $("mClose").onclick=()=>{$("modal").hidden=true;};
+  $("sheet").querySelectorAll("[data-objclaim]").forEach(b=>b.onclick=()=>{ const i=+b.dataset.objclaim, o=s.p.obj[i]; if(!o||objProg(o)<o.need) return;
+    if(o.rw==="money") s.money+=objMoney(); else { const n=objCores(); s.cores+=n; s.coresTotal+=n; } toast(`🎁 ${rwTxt(o)}`); s.p.obj.splice(i,1); fillObj(); save(); openObj(); });
+  $("sheet").querySelectorAll("[data-objskip]").forEach(b=>b.onclick=()=>{ if(!b.dataset.armed){ b.dataset.armed="1"; b.textContent="Touche encore pour passer"; return; } s.p.obj.splice(+b.dataset.objskip,1); fillObj(); save(); openObj(); });
+}
+$("objBtn").addEventListener("click",openObj);
+function objTick(){ fillObj(); let any=false; s.p.obj.forEach(o=>{ const done=objProg(o)>=o.need; if(done){ any=true; if(!o.told){ o.told=1; toast(`🎯 Défi réussi : ${OBJT[o.k].txt(o)}`); } } }); $("objBtn").classList.toggle("ready",any); }
+
 // ---------- outils de test ----------
 function simTime(ms){ const sec=Math.floor(ms/1000), d=Math.floor(sec/86400), h=Math.floor(sec%86400/3600), m=Math.floor(sec%3600/60); return (d?d+" j ":"")+(d||h?h+" h ":"")+m+" min"; }
 let tAcc=0;
@@ -1422,7 +1468,7 @@ function loop(t){
     if(calcSig()!==sig) build(); else refresh();
     badges();
   }
-  secAcc+=dt; if(secAcc>1){ const sdt=secAcc; secAcc=0; asmTick(sdt);
+  secAcc+=dt; if(secAcc>1){ const sdt=secAcc; secAcc=0; asmTick(sdt); objTick();
     { const nw=Date.now(); if(!s.nextAd||s.nextAd>nw+20*60000) s.nextAd=nw+(12+Math.random()*6)*60000; if(nw>=s.nextAd&&!adShown&&$("modal").hidden&&!battle){ s.nextAd=nw+(12+Math.random()*6)*60000; showAdBubble(); } }
     { const d=DF(), nw=Date.now(); if(!d.on&&raceActive(0)){ d.on=1; d.next=nw+3*WAVE_EVERY; d.known=[0]; save(); setTimeout(()=>modal("👽 Alerte : des aliens!","Ton forage a réveillé quelque chose. Des Rampants 🐛 vont attaquer ta base sur Terre dans 30 min, puis une vague revient toutes les 10 minutes. Les 3 premières sont faibles, et les aliens s’adaptent : si tu les écrases trop facilement, ils reviennent plus forts. Si une vague perce, ils pillent tout ton argent. Va dans le nouvel onglet Défense pour installer des mitrailleuses et renforcer ton mur."),800); }
       if(d.on){ activeRaces().forEach(rr=>{ if(!d.known.includes(rr)){ d.known.push(rr); d.next=Math.max(d.next,nw+WAVE_EVERY); d.warned=0; save(); setTimeout(()=>modal(`👽 Nouvelle race : ${RACES[rr].n} ${RACES[rr].i}`,`Ta colonie sur ${PLANETS[rr].the} a attiré une nouvelle espèce. Elle attaquera la Terre dès la prochaine vague, dans 10 min au plus. Ton arme la plus efficace : ${TURRETS[rr].i} ${TURRETS[rr].n}, faite avec les matériaux de ${PLANETS[rr].the}.`),1200); } });
